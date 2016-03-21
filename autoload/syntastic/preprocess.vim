@@ -98,6 +98,51 @@ function! syntastic#preprocess#dockerfile_lint(errors) abort " {{{2
     return out
 endfunction " }}}2
 
+function! syntastic#preprocess#elmmake(errors) abort " {{{2
+    if a:errors[0] ==# 'Successfully generated /dev/null'
+        return []
+    endif
+
+    " For some errors, elm-make doesn't print JSON even if --report=json is passed. Just raise the
+    " first line as an error.
+    if a:errors[0][0] !=# '['
+        return ['1:1:e: ' . a:errors[0]]
+    endif
+
+    let errs = s:_decode_JSON(a:errors[0])
+
+    let out = []
+    if type(errs) == type([])
+        for e in errs
+            if type(e) == type({})
+                try
+                    let msg =
+                        \ e['file'] . ':' .
+                        \ e['region']['start']['line'] . ':' .
+                        \ e['region']['start']['column'] . ':' .
+                        \ e['type'][0] . ': ' .
+                        \ e['tag'] . ': ' .
+                        \ e['overview']
+
+                    call add(out, msg)
+                catch /\m^Vim\%((\a\+)\)\=:E716/
+                    call syntastic#log#warn('checker elm/elmmake: unrecognized error format')
+                    let out = []
+                    break
+                endtry
+            else
+                call syntastic#log#warn('checker elm/elmmake: unrecognized error format')
+                let out = []
+                break
+            endif
+        endfor
+    else
+        call syntastic#log#warn('checker elm/elmmake: unrecognized error format')
+    endif
+
+    return out
+endfunction " }}}2
+
 function! syntastic#preprocess#flow(errors) abort " {{{2
     let idx = 0
     while idx < len(a:errors) && a:errors[idx][0] !=# '{'
